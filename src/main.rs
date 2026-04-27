@@ -1,23 +1,21 @@
 mod handlers;
 mod models;
+mod openapi;
 
+// use openapi::ApiDoc;
 use axum::{
     Router,
     routing::{delete, get, patch, post},
 };
-use models::{CompletedTodo, CreateTodo, Todo, UpdateTodo};
+// use models::{CompletedTodo, CreateTodo, Todo, UpdateTodo};
 use sqlx::sqlite::SqlitePool;
 use std::env;
-use utoipa::OpenApi; // Ensure utoipa is imported
-use utoipa_swagger_ui::SwaggerUi; // Ensure swagger ui is imported
+// use utoipa::OpenApi; // Ensure utoipa is imported
+// use utoipa_swagger_ui::SwaggerUi;
 
-#[derive(OpenApi)]
-#[openapi(
-    paths(handlers::get_all, handlers::get_one, handlers::create, handlers::update, handlers::deletes, handlers::set_completed, handlers::multi_create, handlers::search_task),
-    components(schemas(Todo, CreateTodo, UpdateTodo, CompletedTodo)),
-    tags((name = "todo", description = "Todo management API"))
-)]
-pub struct ApiDoc;
+//use crate::openapi::openapi_spec; // Ensure swagger ui is imported
+use tower_http::services::ServeDir;
+
 
 #[tokio::main]
 async fn main() {
@@ -39,6 +37,7 @@ async fn main() {
         .expect("Échec de la migration initiale");
 
     let app = Router::new()
+        .nest_service("/", ServeDir::new("static"))
         .route("/todos", get(handlers::get_all))
         .route("/todos/{id}", get(handlers::get_one))
         .route("/todos", post(handlers::create))
@@ -48,12 +47,17 @@ async fn main() {
         .route("/todos/import", post(handlers::multi_create))
         .route("/todos/search/{needle}", get(handlers::search_task))
         .route("/todos/import-csv", post(handlers::import_csv))
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .route("/todos/export", get(handlers::export_csv))
+        //.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        // .route(openapi::OPENAPI_URL, get(openapi::openapi_spec))
+        // .route("/scalar", get(|| async { axum::response::Html(openapi::get_scalar_html()) }))        
         .with_state(pool);
+
+    let app = app.merge(openapi::create_router());
 
     let listener = tokio::net::TcpListener::bind(&server_address)
         .await
         .unwrap();
-    println!("Serveur lancé sur http://{}", server_address);
+    println!("Sever started on: http://{}", server_address);
     axum::serve(listener, app).await.unwrap();
 }

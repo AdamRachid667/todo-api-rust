@@ -1,4 +1,7 @@
-use crate::models::{AppError, CompletedTodo, CreateTodo, Todo, UpdateTodo, SearchResponse};
+use crate::models::{AppError, CompletedTodo, CreateTodo, SearchResponse, Todo, UpdateTodo};
+use axum::extract::Multipart;
+use axum::http::header;
+use axum::response::{IntoResponse, Response};
 use axum::{
     Json,
     extract::{Path, State},
@@ -7,7 +10,6 @@ use axum::{
 use serde_json::{Value, json};
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;
-use axum::extract::Multipart;
 use std::io::Cursor;
 
 #[utoipa::path(
@@ -16,7 +18,8 @@ use std::io::Cursor;
     summary = "Retrieve all todo items",
     description = "Fetches the complete list of todo items from the database. Use this to get an overview of all tasks.",
     responses((status = 200, description = "List of all todos", body = Vec<Todo>))
-)]pub async fn get_all(State(pool): State<SqlitePool>) -> Result<Json<Vec<Todo>>, AppError> {
+)]
+pub async fn get_all(State(pool): State<SqlitePool>) -> Result<Json<Vec<Todo>>, AppError> {
     let todos = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
         .fetch_all(&pool)
         .await?;
@@ -30,7 +33,8 @@ use std::io::Cursor;
     description = "Fetches the full details of a single todo item using its unique ID.",
     params(("id" = i64, Path, description = "The unique primary key of the Todo item")),
     responses((status = 200, description = "Found", body = Todo), (status = 500, description = "Database error"))
-)]pub async fn get_one(
+)]
+pub async fn get_one(
     Path(id): Path<i64>,
     State(pool): State<SqlitePool>,
 ) -> Result<Json<Todo>, AppError> {
@@ -49,7 +53,8 @@ use std::io::Cursor;
     params(("id" = i64, Path, description = "The ID of the todo to update")),
     request_body(content = UpdateTodo, description = "The new task description"),
     responses((status = 200, description = "Updated", body = Todo))
-)]pub async fn update(
+)]
+pub async fn update(
     Path(id): Path<i64>,
     State(pool): State<SqlitePool>,
     Json(payload): Json<UpdateTodo>,
@@ -155,7 +160,8 @@ pub async fn search_task(
     description = "Adds a new task to the database. The 'completed' status defaults to false.",
     request_body(content = CreateTodo, description = "JSON payload containing the task description"),
     responses((status = 200, description = "Created", body = Todo))
-)]pub async fn create(
+)]
+pub async fn create(
     State(pool): State<SqlitePool>,
     Json(payload): Json<CreateTodo>,
 ) -> Result<Json<Todo>, AppError> {
@@ -235,9 +241,12 @@ pub async fn import_csv(
 ) -> Result<Json<Vec<Todo>>, AppError> {
     // 1. Get the file from the multipart requests
     let field = multipart.next_field().await?.ok_or_else(|| {
-        sqlx::Error::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "No file found"))
+        sqlx::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No file found",
+        ))
     })?;
-    
+
     let data = field.bytes().await?;
     let mut reader = csv::Reader::from_reader(Cursor::new(data));
     let mut results = Vec::new();
@@ -245,16 +254,53 @@ pub async fn import_csv(
     // 2. Parse CSV and insert
     for result in reader.deserialize::<CreateTodo>() {
         let payload = result.map_err(|_| sqlx::Error::WorkerCrashed)?; // Simplified error
-        
+
         let todo = sqlx::query_as::<_, Todo>(
-            "INSERT INTO todos (task, completed) VALUES (?, 0) RETURNING *"
+            "INSERT INTO todos (task, completed) VALUES (?, 0) RETURNING *",
         )
         .bind(payload.task)
         .fetch_one(&pool)
         .await?;
-        
+
         results.push(todo);
     }
 
     Ok(Json(results))
+}
+
+#[utoipa::path(
+    get, path = "/todos/export", tag = "todo",
+    operation_id = "export_todos_csv",
+    summary = "Export all todos as CSV",
+    description = "Downloads all todo items as a formatted CSV file.",
+    responses((status = 200, description = "CSV file downloaded", body = String))
+)]
+pub async fn export_csv(State(pool): State<SqlitePool>) -> Result<Response, AppError> {
+    // 1. Fetch all todos
+    let todos = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
+        .fetch_all(&pool)
+        .await?;
+
+    // 2. Serialize to CSV
+    let mut wtr = csv::Writer::from_writer(Vec::new());
+    for todo in todos {
+        wtr.serialize(todo)
+            .map_err(|e| sqlx::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    }
+    let data = wtr
+        .into_inner()
+        .map_err(|e| sqlx::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+
+    // 3. Return as a file download
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/csv"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"todos.csv\"",
+            ),
+        ],
+        data,
+    )
+        .into_response())
 }

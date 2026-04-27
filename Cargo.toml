@@ -15,3 +15,4 @@ csv = "1.4.0"
 # to generate an OpenAPI 3.x spec from our axum code
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 utoipa = { version = "5.4.0", features = ["axum_extras"] }
+tower-http = { version = "0.6.8", features = ["fs"] }
