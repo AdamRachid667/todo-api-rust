@@ -1,28 +1,38 @@
 <template>
   <div class="app">
     <div class="header">
-      <h1>Todo App</h1>
-      <p>by Adam Rachid</p>
+      <div class="header-main">
+        <div class="header-title">
+          <h1>Tasks Management App</h1>
+        </div>
+        <div class="header-actions">
+          <button class="act-btn" @click="exportCSV">Export csv</button>
+          <label class="act-btn">
+            Import csv
+            <input type="file" @change="importCSV" accept=".csv" hidden />
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="stats">
       <div class="stat">
-        <div class="stat-val">{{ todos.length }}</div>
-        <div class="stat-lbl">total</div>
+        <div class="stat-val">{{ tasks.length }}</div>
+        <div class="stat-lbl">Total</div>
       </div>
       <div class="stat">
-        <div class="stat-val">{{ todos.filter((t) => t.completed).length }}</div>
-        <div class="stat-lbl">done</div>
+        <div class="stat-val">{{ tasks.filter((t) => t.completed).length }}</div>
+        <div class="stat-lbl">Done</div>
       </div>
       <div class="stat">
-        <div class="stat-val">{{ todos.filter((t) => !t.completed).length }}</div>
-        <div class="stat-lbl">remaining</div>
+        <div class="stat-val">{{ tasks.filter((t) => !t.completed).length }}</div>
+        <div class="stat-lbl">Remaining</div>
       </div>
     </div>
 
     <div class="compose">
-      <input v-model="newTask" placeholder="Add a new task…" @keyup.enter="addTodo" />
-      <button class="btn" :disabled="adding" @click="addTodo">+ Add</button>
+      <input v-model="newTaskInput" placeholder="Add a new task…" @keyup.enter="addTask" />
+      <button class="btn" :disabled="adding" @click="addTask">+ Add</button>
     </div>
 
     <div class="search-bar">
@@ -35,7 +45,7 @@
           stroke-linecap="round"
         />
       </svg>
-      <input v-model="search" placeholder="Search tasks…" />
+      <input v-model="searchQuery" placeholder="Search tasks…" @input="handleSearch" />
     </div>
 
     <div class="filters">
@@ -43,144 +53,205 @@
         v-for="f in ['all', 'active', 'done']"
         :key="f"
         class="filter-btn"
-        :class="{ active: filter === f }"
-        @click="filter = f"
+        :class="{ active: currentFilter === f }"
+        @click="currentFilter = f"
       >
         {{ f }}
       </button>
     </div>
 
-    <div class="list" v-if="visible.length">
+    <div class="list" v-if="visibleTasks.length">
       <div
-        v-for="todo in visible"
-        :key="todo.id"
-        class="todo-item"
-        :class="{ done: todo.completed }"
+        v-for="task in visibleTasks"
+        :key="task.id"
+        class="task-item"
+        :class="{ done: task.completed }"
       >
-        <div class="check" :class="{ checked: todo.completed }" @click="toggleDone(todo)"></div>
+        <div class="check" :class="{ checked: task.completed }" @click="toggleTask(task)"></div>
 
-        <input
-          v-if="editingId === todo.id"
-          class="todo-edit"
-          v-model="editText"
-          @keyup.enter="saveEdit(todo)"
-          @keyup.escape="editingId = null"
-          @blur="saveEdit(todo)"
-          ref="editInput"
-        />
-        <span v-else class="todo-text">{{ todo.task }}</span>
+        <div class="task-content">
+          <input
+            v-if="editingId === task.id"
+            class="task-edit"
+            v-model="editTaskText"
+            @keyup.enter="saveEdit(task)"
+            @keyup.escape="editingId = null"
+            @blur="saveEdit(task)"
+            ref="taskEditInput"
+          />
+          <span v-else class="task-text" @dblclick="startEdit(task)">{{ task.task }}</span>
 
-        <span class="todo-id">#{{ todo.id }}</span>
+          <div class="task-meta">
+            Created: {{ formatDate(task.created_at) }}
+            <span v-if="task.completed_at"> • Done: {{ formatDate(task.completed_at) }}</span>
+          </div>
+        </div>
 
-        <div class="todo-actions">
-          <button v-if="editingId !== todo.id" class="act-btn" @click="startEdit(todo)">
+        <span class="task-id">#{{ task.id }}</span>
+
+        <div class="task-actions">
+          <button v-if="editingId !== task.id" class="act-btn" @click="startEdit(task)">
             edit
           </button>
-          <button class="act-btn danger" @click="deleteTodo(todo.id)">delete</button>
+          <button class="act-btn danger" @click="deleteTask(task.id)">delete</button>
         </div>
       </div>
     </div>
 
     <div v-else class="empty">No tasks here.</div>
-    <div class="toast" :class="{ show: toast }">{{ toast }}</div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 
-const todos = ref([])
-const newTask = ref('')
-const search = ref('')
-const filter = ref('all')
+const API_BASE = `${import.meta.env.VITE_API_URL}/tasks`
+
+const tasks = ref([])
+const newTaskInput = ref('')
+const searchQuery = ref('')
+const currentFilter = ref('all')
 const editingId = ref(null)
-const editText = ref('')
+const editTaskText = ref('')
 const adding = ref(false)
-const editInput = ref(null)
+const taskEditInput = ref(null)
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
-const visible = computed(() => {
-  let list = todos.value
-  if (search.value)
-    list = list.filter((t) => t.task.toLowerCase().includes(search.value.toLowerCase()))
-  if (filter.value === 'active') list = list.filter((t) => !t.completed)
-  if (filter.value === 'done') list = list.filter((t) => t.completed)
+const visibleTasks = computed(() => {
+  let list = tasks.value
+  if (currentFilter.value === 'active') list = list.filter((t) => !t.completed)
+  if (currentFilter.value === 'done') list = list.filter((t) => t.completed)
   return list
 })
 
-async function api( method, path, body ) {
-  const res = await fetch("http://192.168.0.14:3000" + path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) throw new Error(res.status)
-  if (res.status === 204) return null
-  return res.json()
-}
-
-async function loadTodos() {
+async function loadTasks() {
   try {
-    todos.value = await api('GET', '/todos')
-  } catch { showToast('Could not load todos') }
+    const res = await fetch(API_BASE)
+    tasks.value = await res.json()
+  } catch (e) {
+    console.error(e)
+  }
 }
 
-async function addTodo() {
-  const task = newTask.value.trim()
-  if (!task) return
+let searchTimeout
+async function handleSearch() {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(async () => {
+    if (!searchQuery.value.trim()) {
+      loadTasks()
+      return
+    }
+    try {
+      const res = await fetch(`${API_BASE}/search/${encodeURIComponent(searchQuery.value)}`)
+      const result = await res.json()
+      tasks.value = result.data
+    } catch (e) {
+      console.error(e)
+    }
+  }, 300)
+}
+
+async function addTask() {
+  const taskContent = newTaskInput.value.trim()
+  if (!taskContent || adding.value) return
   adding.value = true
   try {
-    const t = await api('POST', '/todos', { task })
-    todos.value.unshift(t)
-    newTask.value = ''
-  } catch { showToast('Failed to add task') }
-  adding.value = false
-  adding.value = false
-}
-
-async function toggleDone(todo) {
-  try {
-    const updated = await api('PATCH', `/todos/${todo.id}/completed`, {
-      completed: !todo.completed,
+    const res = await fetch(API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: taskContent }),
     })
-    Object.assign(todo, updated)
-  } catch { showToast('Failed to delete') }
+    const newTask = await res.json()
+    tasks.value.unshift(newTask)
+    newTaskInput.value = ''
+  } catch (e) {
+    console.error(e)
+  }
+  adding.value = false
 }
 
-async function deleteTodo(id) {
+async function toggleTask(task) {
   try {
-    await api('DELETE', `/todos/${id}`)
-    todos.value = todos.value.filter((t) => t.id !== id)
-  } catch { showToast('Failed to delete') }
+    const res = await fetch(`${API_BASE}/${task.id}/completed`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: !task.completed }),
+    })
+    const updated = await res.json()
+    Object.assign(task, updated)
+  } catch (e) {
+    console.error(e)
+  }
 }
 
-function startEdit(todo) {
-  editingId.value = todo.id
-  editText.value = todo.task
-  nextTick(() => editInput.value?.focus())
+async function deleteTask(id) {
+  try {
+    await fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
+    tasks.value = tasks.value.filter((t) => t.id !== id)
+  } catch (e) {
+    console.error(e)
+  }
 }
 
-async function saveEdit(todo) {
-  if (!editText.value.trim()) {
+async function exportCSV() {
+  window.location.href = `${API_BASE}/export`
+}
+
+async function importCSV(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    await fetch(`${API_BASE}/import-csv`, { method: 'POST', body: formData })
+    loadTasks()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+function startEdit(task) {
+  editingId.value = task.id
+  editTaskText.value = task.task
+  nextTick(() => {
+    if (Array.isArray(taskEditInput.value)) {
+      taskEditInput.value[0]?.focus()
+    } else {
+      taskEditInput.value?.focus()
+    }
+  })
+}
+
+async function saveEdit(task) {
+  const val = editTaskText.value.trim()
+  if (!val || val === task.task) {
     editingId.value = null
     return
   }
   try {
-    const updated = await api('PATCH', `/todos/${todo.id}`, { task: editText.value.trim() })
-    Object.assign(todo, updated)
-  } catch { showToast('Failed to update') }
+    const res = await fetch(`${API_BASE}/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: val }),
+    })
+    const updated = await res.json()
+    Object.assign(task, updated)
+  } catch (e) {
+    console.error(e)
+  }
   editingId.value = null
 }
 
-const toast = ref('')
-let toastTimer = null
-function showToast(msg) {
-  toast.value = msg
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = ''), 20000)
-}
-
-onMounted(loadTodos)
+onMounted(loadTasks)
 </script>
 
 <style>
@@ -197,7 +268,7 @@ onMounted(loadTodos)
   --surface: #ffffff;
   --surface2: #f0efe9;
   --text: #1a1a18;
-  --text2: #6b6a65;
+  --text2: #666665;
   --text3: #a8a7a2;
   --border: rgba(0, 0, 0, 0.1);
   --border2: rgba(0, 0, 0, 0.18);
@@ -235,17 +306,26 @@ body {
 
 .header {
   margin-bottom: 2rem;
-  text-align: center;
+}
+
+.header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 .header h1 {
-  font-size: 3rem;
+  font-size: 24px;
   font-weight: 500;
   color: var(--text);
-  text-align: center;
 }
 .header p {
   font-size: 13px;
   color: var(--text2);
+  margin-top: 4px;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .stats {
@@ -336,9 +416,6 @@ body {
   color: var(--text);
   font-family: var(--font);
 }
-.search-bar input::placeholder {
-  color: var(--text3);
-}
 
 .filters {
   display: flex;
@@ -369,7 +446,7 @@ body {
   gap: 6px;
 }
 
-.todo-item {
+.task-item {
   background: var(--surface);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-lg);
@@ -379,10 +456,10 @@ body {
   gap: 12px;
   transition: border-color 0.1s;
 }
-.todo-item:hover {
+.task-item:hover {
   border-color: var(--border2);
 }
-.todo-item.done .todo-text {
+.task-item.done .task-text {
   text-decoration: line-through;
   color: var(--text3);
 }
@@ -414,14 +491,23 @@ body {
   transform: rotate(45deg) translateY(-1px);
 }
 
-.todo-text {
+.task-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.task-text {
   font-size: 14px;
   color: var(--text);
   line-height: 1.4;
 }
-.todo-edit {
-  flex: 1;
+.task-meta {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.task-edit {
   border: none;
   outline: none;
   font-size: 14px;
@@ -430,19 +516,19 @@ body {
   font-family: var(--font);
   border-bottom: 1px solid var(--border2);
 }
-.todo-id {
+.task-id {
   font-size: 11px;
   color: var(--text3);
   font-family: var(--mono);
 }
 
-.todo-actions {
+.task-actions {
   display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.1s;
 }
-.todo-item:hover .todo-actions {
+.task-item:hover .task-actions {
   opacity: 1;
 }
 
@@ -479,24 +565,5 @@ body {
   padding: 3rem 1rem;
   color: var(--text3);
   font-size: 14px;
-}
-.toast {
-  position: fixed;
-  bottom: 1.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--text);
-  color: var(--bg);
-  padding: 8px 18px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  opacity: 0;
-  transition: opacity 0.2s;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 100;
-}
-.toast.show {
-  opacity: 1;
 }
 </style>

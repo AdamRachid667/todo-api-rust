@@ -97,7 +97,7 @@ export default defineConfig((ctx) => {
       // https: true,
       open: true, // opens browser window automatically
       proxy: {
-        '/todos': 'http://0.0.0.0:3000',
+        '/tasks': 'http://0.0.0.0:3000',
       },
     },
 

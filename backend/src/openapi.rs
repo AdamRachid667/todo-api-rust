@@ -1,20 +1,16 @@
 
-use crate::models::{CompletedTodo, CreateTodo, Todo, UpdateTodo};
+use crate::models::{CompletedTask, CreateTask, Task, UpdateTask};
 use crate::handlers;
 
 use axum::{routing::get, Json, Router};
-use utoipa::{
-    //openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
-    //Modify, 
-    OpenApi,
-};
+use utoipa::OpenApi;
 
 const OPENAPI_URL: &str = "/api-docs/openapi.json";
 
 #[derive(OpenApi)]
 #[openapi(
     info(
-        description = "Todo app made by Adam Rachid and his dad Abdessamad Rachid",
+        description = "Task Management App made by Adam Rachid",
         license(name = "All Rights Reserved"),        
     ),    
     paths(
@@ -26,12 +22,13 @@ const OPENAPI_URL: &str = "/api-docs/openapi.json";
         handlers::set_completed,
         handlers::multi_create,
         handlers::search_task,
+        handlers::import_csv,
         handlers::export_csv
     ),
     components(
-        schemas(Todo, CreateTodo, UpdateTodo, CompletedTodo)
+        schemas(Task, CreateTask, UpdateTask, CompletedTask)
     ),
-    tags((name = "todo", description = "Todo management API"))
+    tags((name = "task", description = "Task management API"))
 )]
 pub struct ApiDoc;
 
@@ -40,9 +37,6 @@ async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }
 
-
-//custom HTML template to remove scalar upsell like  The AI Agent chat button and The "Open in Client" button (upsell to Scalar desktop app)
-// We use a function or a lazy static to build this
 fn get_scalar_html() -> String {
     format!(r##"<!doctype html>
 <html>
@@ -80,4 +74,4 @@ pub fn create_router() -> Router {
         // .merge(SwaggerUi::new("/swagger/swagger-ui").url("/swagger/api-docs/openapi.json", ApiDoc::openapi()))                
         // .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
         // .merge(RapiDoc::with_openapi("/rapidoc-api-docs/openapi.json", ApiDoc::openapi()).path("/rapidoc"))
-}        
+}     

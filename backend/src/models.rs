@@ -5,33 +5,37 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
+use chrono::{DateTime, Utc};
 
 #[derive(Serialize, Deserialize, FromRow, Clone, ToSchema)]
-pub struct Todo {
+pub struct Task {
     pub id: i64,
     pub task: String,
     pub completed: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(serde::Deserialize, ToSchema)]
-pub struct CreateTodo {
+pub struct CreateTask {
     pub task: String,
 }
 
 #[derive(serde::Deserialize, ToSchema)]
-pub struct UpdateTodo {
+pub struct UpdateTask {
     pub task: String,
 }
 
 #[derive(serde::Deserialize, ToSchema)]
-pub struct CompletedTodo {
+pub struct CompletedTask {
     pub completed: bool,
 }
 
 #[derive(Serialize, ToSchema)]
 pub struct SearchResponse {
     pub count: i64,
-    pub data: Vec<Todo>,
+    pub data: Vec<Task>,
 }
 
 pub enum AppError {
