@@ -1,14 +1,13 @@
-# 📝 Todo API — Rust + Axum + SQLite + Vue
+📝 Todo API — Rust + Axum + SQLite + Quasar
 
-A full-stack Todo application featuring a **Rust backend API** and a **Vue frontend**.
+A full-stack Todo application featuring a Rust backend API and a Quasar frontend.
+The backend provides a powerful REST API with advanced features like search, 
+bulk import (JSON & CSV), and CSV export, while the frontend offers a clean 
+Material Design interface to interact with it.
 
-The backend provides a powerful REST API with advanced features like **search**, **bulk import (JSON & CSV)**, and **CSV export**, while the frontend offers a clean interface to interact with it.
+🛠️ Tech Stack
 
----
-
-## 🛠️ Tech Stack
-
-### 🔧 Backend
+🔧 Backend
 - Rust
 - Axum
 - SQLx
@@ -16,104 +15,75 @@ The backend provides a powerful REST API with advanced features like **search**,
 - utoipa (OpenAPI)
 - Scalar
 
-### 🎨 Frontend
-- Vue.js
+🎨 Frontend
+- Quasar Framework (Vue.js based)
+- Vite
 - Axios / Fetch API
 
----
+🚀 Features
 
-## 🚀 Features
-
-### Backend
+Backend
 - Full CRUD API
 - Search todos
 - Bulk import (JSON & CSV)
 - Export to CSV
-- OpenAPI + Scalar
+- OpenAPI + Scalar Docs
 
-### Frontend
+Frontend
+- Material Design UI
 - Create & manage todos
 - Toggle completion
 - Live interaction with API
+- Responsive layout
 
----
+📦 Installation
 
-## 📦 Installation
-
-```bash
 git clone https://github.com/AdamRachid667/todo-api-rust.git
 cd todo-api-rust
-```
 
----
+⚙️ Environment Variables
 
-## ⚙️ Environment Variables
-
-Create a `.env` file:
-
-```
+Create a .env file in the root directory:
 DATABASE_URL=sqlite://db.sqlite
 SERVER_ADDRESS=127.0.0.1:3000
-```
+FRONTEND_URL=http://localhost:9000
 
----
+▶️ Run the Project
 
-## ▶️ Run the Project
-
-### 1. Start Backend
-
-```bash
+1. Start Backend
 cargo run
-```
 
-Backend runs at:
-http://127.0.0.1:3000
+Backend runs at: http://127.0.0.1:3000
+Scalar Docs: http://127.0.0.1:3000/api-docs
 
-Scalar:
-http://127.0.0.1:3000/scalar
-
----
-
-### 2. Start Frontend
-
-```bash
+2. Start Frontend
 cd frontend
 npm install
-npm run dev
-```
+quasar dev
 
----
+📡 API Endpoints
 
-## 📡 API Endpoints
+Method   Endpoint                Description
+------   --------                -----------
+GET      /tasks                  Get all todos
+GET      /tasks/{id}             Get one todo
+POST     /tasks                  Create todo
+PATCH    /tasks/{id}             Update task
+PATCH    /tasks/{id}/completed   Toggle completion
+DELETE   /tasks/{id}             Delete todo
+POST     /tasks/import           Bulk JSON import
+POST     /tasks/import-csv       CSV upload
+GET      /tasks/export           Export CSV
+GET      /tasks/search/{needle}  Search
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /todos | Get all todos |
-| GET | /todos/{id} | Get one todo |
-| POST | /todos | Create todo |
-| PATCH | /todos/{id} | Update task |
-| PATCH | /todos/{id}/completed | Toggle completion |
-| DELETE | /todos/{id} | Delete todo |
-| POST | /todos/import | Bulk JSON import |
-| POST | /todos/import-csv | CSV upload |
-| GET | /todos/export | Export CSV |
-| GET | /todos/search/{needle} | Search |
+📋 Example
 
----
-
-## 📋 Example
-
-```bash
-curl -X POST http://127.0.0.1:3000/todos \
+curl -X POST http://127.0.0.1:3000/tasks \
 -H "Content-Type: application/json" \
 -d '{"task":"Learn Rust"}'
-```
 
----
+📂 Project Structure
 
-## 📂 Project Structure
-
-```
 backend/
 ├── src/
 │   ├── main.rs
@@ -123,26 +93,20 @@ backend/
 
 frontend/
 ├── src/
-│   └── IndexPage.vue
-```
+│   └── pages/
+│       └── IndexPage.vue
 
----
+🧠 Highlights
 
-## 🧠 Highlights
-
-- Full-stack architecture (Rust + Vue)
+- Full-stack architecture (Rust + Quasar)
 - Scalar documentation built-in
 - CSV processing (import/export)
 - Clean separation of concerns
 
----
-
-## 📄 License
+📄 License
 
 All Rights Reserved
 
----
-
-## 👤 Author
+👤 Author
 
 Adam Rachid
