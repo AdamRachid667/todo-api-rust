@@ -1,6 +1,6 @@
 # Tasks Management App
 
-A full-stack task manager with a **Rust + Axum** REST API backend and a **Vue 3 + Quasar** frontend. Tasks are persisted in SQLite, and the API is fully documented with an interactive OpenAPI/Swagger UI.
+A full-stack task manager with a **Rust + Axum** REST API backend and a **Vue 3 + Quasar** frontend. Tasks are persisted in SQLite, and the API is fully documented with an interactive OpenAPI/Scalar UI.
 
 ---
 
@@ -11,7 +11,7 @@ A full-stack task manager with a **Rust + Axum** REST API backend and a **Vue 3 
 | Backend | Rust · [Axum](https://github.com/tokio-rs/axum) · [SQLx](https://github.com/launchbadge/sqlx) |
 | Database | SQLite (auto-created on first run) |
 | Frontend | Vue 3 · [Quasar Framework](https://quasar.dev/) |
-| API Docs | [utoipa](https://github.com/juhaku/utoipa) · Swagger UI |
+| API Docs | [utoipa](https://github.com/juhaku/utoipa) · Scalar UI |
 
 ---
 
@@ -24,7 +24,7 @@ A full-stack task manager with a **Rust + Axum** REST API backend and a **Vue 3 
 - 📁 Export all tasks to CSV
 - 📤 Import tasks from a CSV file
 - 🌙 Automatic dark mode (respects `prefers-color-scheme`)
-- 📖 Interactive API docs via Swagger UI
+- 📖 Interactive API docs via Scalar UI
 
 ---
 
@@ -88,7 +88,7 @@ The Quasar dev server starts on `http://localhost:9000` by default. Set `VITE_AP
 Full interactive docs are served by the running backend at:
 
 ```
-http://127.0.0.1:3000/swagger-ui
+http://127.0.0.1:3000/scalar
 ```
 
 ### Endpoints at a glance
@@ -144,7 +144,7 @@ Call the dentist
 │   ├── main.rs        # Server setup, routing, DB init
 │   ├── handlers.rs    # Route handlers (all business logic)
 │   ├── models.rs      # Structs, error types
-│   └── openapi.rs     # utoipa / Swagger UI setup
+│   └── openapi.rs     # utoipa / Scalar UI setup
 ├── frontend/          # Quasar / Vue 3 app
 │   └── src/pages/
 │       └── IndexPage.vue
