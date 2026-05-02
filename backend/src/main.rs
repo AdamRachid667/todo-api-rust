@@ -2,7 +2,7 @@ mod handlers;
 mod models;
 mod openapi;
 
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use axum::{
     Router,
@@ -16,7 +16,7 @@ use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().unwrap();
+    dotenvy::dotenv().ok();
 
     let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://db.sqlite".to_string());
 
@@ -39,7 +39,18 @@ async fn main() {
     )
     .execute(&pool)
     .await
-    .expect("Échec de la migration initiale");
+    .expect("Failed to run initial migration");
+
+    let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9000".to_string());
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(frontend_url.parse().expect("Invalid FRONTEND_URL")))
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PATCH,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers([axum::http::header::CONTENT_TYPE]);
 
     let app = Router::new()
         .route("/", get(handlers::serve_root_page))
@@ -55,7 +66,7 @@ async fn main() {
                 .delete(handlers::deletes),
         )
         .route("/tasks/{id}/completed", patch(handlers::set_completed))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .fallback_service(ServeDir::new("static"))
         .with_state(pool)
         .merge(openapi::create_router());

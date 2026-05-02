@@ -1,5 +1,9 @@
 <template>
   <div class="app">
+    <div v-if="errorMessage" class="error-banner" @click="errorMessage = ''">
+      {{ errorMessage }}
+    </div>
+
     <div class="header">
       <div class="header-main">
         <div class="header-title">
@@ -115,6 +119,21 @@ const editingId = ref(null)
 const editTaskText = ref('')
 const adding = ref(false)
 const taskEditInput = ref(null)
+const errorMessage = ref('')
+
+function showError(msg) {
+  errorMessage.value = msg
+  setTimeout(() => (errorMessage.value = ''), 5000)
+}
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || `Request failed (${res.status})`)
+  }
+  return res
+}
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
@@ -127,18 +146,18 @@ const formatDate = (dateStr) => {
 }
 
 const visibleTasks = computed(() => {
-  let list = tasks.value
-  if (currentFilter.value === 'active') list = list.filter((t) => !t.completed)
-  if (currentFilter.value === 'done') list = list.filter((t) => t.completed)
+  const list = tasks.value
+  if (currentFilter.value === 'active') return list.filter((t) => !t.completed)
+  if (currentFilter.value === 'done') return list.filter((t) => t.completed)
   return list
 })
 
 async function loadTasks() {
   try {
-    const res = await fetch(API_BASE)
+    const res = await apiFetch(API_BASE)
     tasks.value = await res.json()
   } catch (e) {
-    console.error(e)
+    showError('Failed to load tasks.')
   }
 }
 
@@ -151,11 +170,11 @@ async function handleSearch() {
       return
     }
     try {
-      const res = await fetch(`${API_BASE}/search/${encodeURIComponent(searchQuery.value)}`)
+      const res = await apiFetch(`${API_BASE}/search/${encodeURIComponent(searchQuery.value)}`)
       const result = await res.json()
       tasks.value = result.data
     } catch (e) {
-      console.error(e)
+      showError('Search failed.')
     }
   }, 300)
 }
@@ -165,7 +184,7 @@ async function addTask() {
   if (!taskContent || adding.value) return
   adding.value = true
   try {
-    const res = await fetch(API_BASE, {
+    const res = await apiFetch(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ task: taskContent }),
@@ -174,36 +193,50 @@ async function addTask() {
     tasks.value.unshift(newTask)
     newTaskInput.value = ''
   } catch (e) {
-    console.error(e)
+    showError(`Failed to add task: ${e.message}`)
+  } finally {
+    adding.value = false
   }
-  adding.value = false
 }
 
 async function toggleTask(task) {
   try {
-    const res = await fetch(`${API_BASE}/${task.id}/completed`, {
+    const res = await apiFetch(`${API_BASE}/${task.id}/completed`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ completed: !task.completed }),
     })
     const updated = await res.json()
-    Object.assign(task, updated)
+    task.completed = updated.completed
+    task.completed_at = updated.completed_at
+    task.updated_at = updated.updated_at
   } catch (e) {
-    console.error(e)
+    showError('Failed to update task.')
   }
 }
 
 async function deleteTask(id) {
   try {
-    await fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
+    await apiFetch(`${API_BASE}/${id}`, { method: 'DELETE' })
     tasks.value = tasks.value.filter((t) => t.id !== id)
   } catch (e) {
-    console.error(e)
+    showError('Failed to delete task.')
   }
 }
 
 async function exportCSV() {
-  window.location.href = `${API_BASE}/export`
+  try {
+    const res = await apiFetch(`${API_BASE}/export`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'tasks.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    showError('Export failed.')
+  }
 }
 
 async function importCSV(event) {
@@ -212,11 +245,12 @@ async function importCSV(event) {
   const formData = new FormData()
   formData.append('file', file)
   try {
-    await fetch(`${API_BASE}/import-csv`, { method: 'POST', body: formData })
-    loadTasks()
+    await apiFetch(`${API_BASE}/import-csv`, { method: 'POST', body: formData })
+    await loadTasks()
   } catch (e) {
-    console.error(e)
+    showError(`Import failed: ${e.message}`)
   }
+  event.target.value = ''
 }
 
 function startEdit(task) {
@@ -238,15 +272,16 @@ async function saveEdit(task) {
     return
   }
   try {
-    const res = await fetch(`${API_BASE}/${task.id}`, {
+    const res = await apiFetch(`${API_BASE}/${task.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ task: val }),
     })
     const updated = await res.json()
-    Object.assign(task, updated)
+    task.task = updated.task
+    task.updated_at = updated.updated_at
   } catch (e) {
-    console.error(e)
+    showError(`Failed to save edit: ${e.message}`)
   }
   editingId.value = null
 }
@@ -565,5 +600,23 @@ body {
   padding: 3rem 1rem;
   color: var(--text3);
   font-size: 14px;
+}
+
+.error-banner {
+  background: #fcebeb;
+  color: #a32d2d;
+  border: 1px solid #f5c6c6;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+@media (prefers-color-scheme: dark) {
+  .error-banner {
+    background: #501313;
+    color: #f7c1c1;
+    border-color: #7a2020;
+  }
 }
 </style>

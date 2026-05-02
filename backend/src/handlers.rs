@@ -61,15 +61,21 @@ pub async fn update(
     State(pool): State<SqlitePool>,
     Json(payload): Json<UpdateTask>,
 ) -> Result<Json<Task>, AppError> {
-    // We explicitly set updated_at to CURRENT_TIMESTAMP during the update
+    let trimmed = payload.task.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(AppError::Validation("Task cannot be empty".to_string()));
+    }
+    if trimmed.len() > 1000 {
+        return Err(AppError::Validation("Task cannot exceed 1000 characters".to_string()));
+    }
+
     let task = sqlx::query_as::<_, Task>(
         "UPDATE tasks SET task = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
     )
-    .bind(payload.task)
+    .bind(trimmed)
     .bind(id)
     .fetch_one(&pool)
-    .await
-    .map_err(|_| AppError::Sqlx(sqlx::Error::RowNotFound))?;
+    .await?;
 
     Ok(Json(task))
 }
@@ -110,8 +116,6 @@ pub async fn set_completed(
     State(pool): State<SqlitePool>,
     Json(payload): Json<CompletedTask>,
 ) -> Result<Json<Task>, AppError> {
-    // 1. Determine the SQL based on whether we are completing or un-completing
-    // We update 'updated_at' in both cases.
     let sql = if payload.completed {
         "UPDATE tasks 
          SET completed = 1, 
@@ -128,12 +132,10 @@ pub async fn set_completed(
          RETURNING *"
     };
 
-    // 2. Execute the query
     let task = sqlx::query_as::<_, Task>(sql)
         .bind(id)
         .fetch_one(&pool)
-        .await
-        .map_err(|_| AppError::Sqlx(sqlx::Error::RowNotFound))?;
+        .await?;
 
     Ok(Json(task))
 }
@@ -150,10 +152,11 @@ pub async fn search_task(
     State(pool): State<SqlitePool>,
     Path(needle): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let sql = "SELECT *, COUNT(*) OVER() as total_count FROM tasks WHERE task LIKE ?";
+    let sql = "SELECT *, COUNT(*) OVER() as total_count FROM tasks WHERE task LIKE ? ESCAPE '\\'";
 
+    let escaped = needle.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
     let rows = sqlx::query(sql)
-        .bind(format!("%{}%", needle))
+        .bind(format!("%{}%", escaped))
         .fetch_all(&pool)
         .await?;
 
@@ -190,11 +193,11 @@ pub async fn create(
     State(pool): State<SqlitePool>,
     Json(payload): Json<CreateTask>,
 ) -> Result<Json<Task>, AppError> {
-    // We insert the task; DB defaults handle created_at and updated_at.
-    // completed_at remains NULL.
+    payload.validate().map_err(AppError::Validation)?;
+
     let task =
         sqlx::query_as::<_, Task>("INSERT INTO tasks (task, completed) VALUES (?, 0) RETURNING *")
-            .bind(payload.task)
+            .bind(payload.task.trim().to_string())
             .fetch_one(&pool)
             .await?;
 
@@ -212,19 +215,23 @@ pub async fn multi_create(
     State(pool): State<SqlitePool>,
     Json(payloads): Json<Vec<CreateTask>>,
 ) -> Result<Json<Vec<Task>>, AppError> {
-    let mut results = Vec::new();
-
-    for p in payloads {
-        let task = sqlx::query_as::<_, Task>(
-            "INSERT INTO tasks (task, completed) VALUES (?, 0) RETURNING *",
-        )
-        .bind(p.task)
-        .fetch_one(&pool)
-        .await?;
-
-        results.push(task);
+    for p in &payloads {
+        p.validate().map_err(AppError::Validation)?;
     }
 
+    if payloads.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let placeholders = payloads.iter().map(|_| "(?, 0)").collect::<Vec<_>>().join(", ");
+    let sql = format!("INSERT INTO tasks (task, completed) VALUES {} RETURNING *", placeholders);
+
+    let mut query = sqlx::query_as::<_, Task>(&sql);
+    for p in &payloads {
+        query = query.bind(p.task.trim().to_string());
+    }
+
+    let results = query.fetch_all(&pool).await?;
     Ok(Json(results))
 }
 
@@ -239,29 +246,32 @@ pub async fn import_csv(
     mut multipart: Multipart,
 ) -> Result<Json<Vec<Task>>, AppError> {
     let field = multipart.next_field().await?.ok_or_else(|| {
-        sqlx::Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No file found",
-        ))
+        AppError::Validation("No file found in request".to_string())
     })?;
 
     let data = field.bytes().await?;
     let mut reader = csv::Reader::from_reader(Cursor::new(data));
-    let mut results = Vec::new();
+    let mut payloads: Vec<CreateTask> = Vec::new();
 
     for result in reader.deserialize::<CreateTask>() {
-        let payload = result.map_err(|_| sqlx::Error::WorkerCrashed)?;
-
-        let task = sqlx::query_as::<_, Task>(
-            "INSERT INTO tasks (task, completed) VALUES (?, 0) RETURNING *",
-        )
-        .bind(payload.task)
-        .fetch_one(&pool)
-        .await?;
-
-        results.push(task);
+        let payload = result?;
+        payload.validate().map_err(AppError::Validation)?;
+        payloads.push(payload);
     }
 
+    if payloads.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let placeholders = payloads.iter().map(|_| "(?, 0)").collect::<Vec<_>>().join(", ");
+    let sql = format!("INSERT INTO tasks (task, completed) VALUES {} RETURNING *", placeholders);
+
+    let mut query = sqlx::query_as::<_, Task>(&sql);
+    for p in &payloads {
+        query = query.bind(p.task.trim().to_string());
+    }
+
+    let results = query.fetch_all(&pool).await?;
     Ok(Json(results))
 }
 
